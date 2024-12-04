@@ -111,11 +111,12 @@ def get_artworks():
             'artist': art.artist,
             'description': art.description,
             'image_url': f"http://127.0.0.1:5000/uploads/{os.path.basename(art.image_url)}",
-            'average_score': db.session.query(db.func.avg(Vote.score)).filter_by(artwork_id=art.id).scalar(),
+            'average_score': round(db.session.query(db.func.avg(Vote.score)).filter_by(artwork_id=art.id).scalar() or 0, 2),
             'votes_count': Vote.query.filter_by(artwork_id=art.id).count()
         } for art in artworks
     ]
     return jsonify(artworks_data), 200
+
 
 # Endpoint para obtener todas las obras de arte del usuario autenticado
 @app.route('/my-artworks', methods=['GET'])
@@ -202,10 +203,15 @@ def vote_artwork(artwork_id):
     try:
         db.session.add(new_vote)
         db.session.commit()
-        return jsonify({'message': 'Voto registrado con éxito'}), 200
+        
+        # Calcular el promedio actualizado
+        average_score = db.session.query(db.func.avg(Vote.score)).filter_by(artwork_id=artwork_id).scalar()
+
+        return jsonify({'message': 'Voto registrado con éxito', 'average_score': round(average_score, 2)}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify(message=f"Error al registrar el voto: {str(e)}"), 500
+
 
 # Endpoint para enviar un mensaje al artista
 @app.route('/artworks/<int:artwork_id>/contact', methods=['POST'])
