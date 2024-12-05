@@ -117,7 +117,6 @@ def get_artworks():
     ]
     return jsonify(artworks_data), 200
 
-
 # Endpoint para obtener todas las obras de arte del usuario autenticado
 @app.route('/my-artworks', methods=['GET'])
 @jwt_required()
@@ -181,6 +180,52 @@ def add_artwork():
         db.session.rollback()
         return jsonify(message=f"Error al añadir la obra: {str(e)}"), 500
 
+# Endpoint para editar una obra de arte (solo para artistas autenticados)
+@app.route('/artworks/<int:artwork_id>', methods=['PUT'])
+@jwt_required()
+def edit_artwork(artwork_id):
+    current_user = get_jwt_identity()
+
+    if current_user['role'] != 'artist':
+        return jsonify(message="Acceso denegado. Solo los artistas pueden editar sus obras."), 403
+
+    artwork = Artwork.query.get(artwork_id)
+
+    if not artwork:
+        return jsonify(message="Obra de arte no encontrada."), 404
+
+    if artwork.artist != current_user['username']:
+        return jsonify(message="Acceso denegado. Solo el artista que subió la obra puede editarla."), 403
+
+    if not request.content_type.startswith('multipart/form-data'):
+        return jsonify(message="Tipo de contenido incorrecto. Se requiere 'multipart/form-data'."), 400
+
+    title = request.form.get('title')
+    if title:
+        artwork.title = title
+
+    description = request.form.get('description')
+    if description:
+        artwork.description = description
+
+    if 'image' in request.files:
+        image = request.files['image']
+        if image.filename != '':
+            try:
+                filename = secure_filename(image.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                image.save(filepath)
+                artwork.image_url = filepath
+            except Exception as e:
+                return jsonify(message=f"Error al guardar la imagen: {str(e)}"), 500
+
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Obra de arte editada con éxito!'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(message=f"Error al editar la obra: {str(e)}"), 500
+
 # Endpoint para votar por una obra de arte
 @app.route('/artworks/<int:artwork_id>/vote', methods=['POST'])
 def vote_artwork(artwork_id):
@@ -203,7 +248,7 @@ def vote_artwork(artwork_id):
     try:
         db.session.add(new_vote)
         db.session.commit()
-        
+
         # Calcular el promedio actualizado
         average_score = db.session.query(db.func.avg(Vote.score)).filter_by(artwork_id=artwork_id).scalar()
 
@@ -211,7 +256,6 @@ def vote_artwork(artwork_id):
     except Exception as e:
         db.session.rollback()
         return jsonify(message=f"Error al registrar el voto: {str(e)}"), 500
-
 
 # Endpoint para enviar un mensaje al artista
 @app.route('/artworks/<int:artwork_id>/contact', methods=['POST'])
@@ -307,4 +351,5 @@ def get_notifications():
     return jsonify(notifications_data), 200
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
